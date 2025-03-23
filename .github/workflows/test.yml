@@ -33,10 +33,14 @@ jobs:
           upStream=https://github.com/${{ matrix.userName }}/${{ matrix.repoName }}
           echo "upStream=$upStream" >> $GITHUB_ENV
           commit=$(curl -sL $upStream/commits/${{ matrix.branchName }} |grep -o "/${{ matrix.userName }}/${{ matrix.repoName }}/commit/[a-z0-9]\+" |head -1 | cut -d\/ -f5)
+          if [[ -z "${commit}" ]]; then
+            commit=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}?per_page=1" | jq -r '.sha' )
+          fi
           if ! grep -q "$commit" README.md || [ "${{ inputs.rebuild }}" == "true" ]; then
             echo "commit=$commit" >> $GITHUB_ENV
             echo "commitS=${commit:0:7}" >> $GITHUB_ENV
           fi
+          echo "commit=$commit"
       - name: Checkout Source Code
         if: ${{ env.commit }}
         run: |
@@ -52,6 +56,8 @@ jobs:
           if [ "${{ matrix.userName }}" == "yenkj" ]; then
             # 进行 sed 修改
             sed -i 's/\.concat(buildTime())/ +\"${{ env.tag }}\"/g' app/build.gradle 
+            # 目前关于页面没有合并我的分支
+            sed -i "/android:text=/s#=\"#=\"${{ env.tag }}\\\\n\\\\n#" app/src/main/res/layout/dialog_about.xml
           else
              sed -i "/versionName/s#[0-9a-zA-Z_\.\'\"-]\+\$#\'${{ env.tag }}\'#" app/build.gradle
              sed -i "/android:text=/s#=\"#=\"${{ env.tag }}\\\\n\\\\n#" app/src/main/res/layout/dialog_about.xml
@@ -66,8 +72,8 @@ jobs:
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
-          #zip -q -x ".git/*" -x  ".github/*" -r source-${{ env.commitS }}.zip .
-          tar -cJf source-${{ env.commitS }}.tar.xz --exclude=.git --exclude=.github *
+          #zip -q -x ".git/*" -x  ".github/*" -r sourceCode-${{ env.commitS }}.zip .
+          tar -cJf sourceCode-${{ env.commitS }}.tar.xz --exclude=.git --exclude=.github *
       - name: Release Apk Sign
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -113,7 +119,7 @@ jobs:
             # 移动并重命名文件
             mv "$file" "apk/$new_base"
           done
-          mv source-${{ env.commitS }}.* apk/
+          mv sourceCode-${{ env.commitS }}.* apk/
       - name: Release Note
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -149,7 +155,7 @@ jobs:
           removeArtifacts: true
           artifacts: |
             TVBoxOSC/apk/*.apk
-            TVBoxOSC/apk/source-${{ env.commitS }}.*
+            TVBoxOSC/apk/sourceCode-${{ env.commitS }}.*
       - name: Push to master
         if: ${{ env.commit }}
         run: |
